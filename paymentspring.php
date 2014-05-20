@@ -41,6 +41,8 @@ class GFPaymentSpring {
 
     add_filter( "gform_validation", array( "GFPaymentSpring", "validate_form" ) );
     add_filter( "gform_entry_created", array( "GFPaymentSpring", "process_transaction" ), 10, 2 );
+
+    add_filter( "gform_tooltips", array( "GFPaymentSpring", "add_tooltips" ) );
   }
 
   public static function admin_init () {
@@ -218,10 +220,10 @@ class GFPaymentSpring {
       ?>
       <li class="paymentspring_card_setting field_setting">
         <input type="checkbox" id="field_paymentspring_card_value" onclick="jQuery('#paymentspring_customer_fields').toggle(); SetFieldProperty('field_paymentspring_card', this.checked);" />
-        <label for="field_paymentspring_card_value" class="inline"><?php _e( "Use with PaymentSpring?", "gf_paymentspring" ); ?></label>
+        <label for="field_paymentspring_card_value" class="inline"><?php _e( "Use with PaymentSpring?", "gf_paymentspring" ); gform_tooltip( "gf_paymentspring_use_card_checkbox" ); ?></label>
         <span id="paymentspring_customer_fields">
           <br />
-          <label for="field_paymentspring_amount_value" class="inline"><?php _e( "Amount Field", "gf_paymentspring" ); ?></label>
+          <label for="field_paymentspring_amount_value" class="inline"><?php _e( "Amount Field", "gf_paymentspring" ); gform_tooltip( "gf_paymentspring_amount_field" ); ?></label>
           <select id="field_paymentspring_amount_value" onchange="SetFieldProperty('field_paymentspring_amount', this.value);">
             <option value=""></option>
             <?php 
@@ -353,21 +355,21 @@ class GFPaymentSpring {
       <table class="form-table">
         <tr>
           <th>
-            <label for="gf_paymentspring_mode"><?php _e( "API Mode", "gf_paymentspring" ); ?></label>
+            <label for="gf_paymentspring_mode"><?php _e( "API Mode", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_api_mode" ); ?>
           </th>
           <td>
             <input type="radio" name="gf_paymentspring_account[mode]" id="gf_paymentspring_mode_live" value="live" 
               <?php echo $options['mode'] == 'live' ? 'checked="checked"' : ''; ?> />
             <label class="inline" for="gf_paymentspring_mode_live"><?php _e( "Live", "gf_paymentspring" ); ?></label>
 
-            <input type="radio" name="gf_paymentspring_account[mode]" id="gf_paymentspring_mode_test" value="test" 
+            <input type="radio" name="gf_paymentspring_account[mode]" id="gf_paymentspring_mode_test" value="test" style="margin-left: 16px"
               <?php echo $options['mode'] == 'live' ? '' : 'checked="checked"'; ?> />
             <label class="inline" for="gf_paymentspring_mode_test"><?php _e( "Test", "gf_paymentspring" ); ?></label>
           </td>
         </tr>
         <tr>
           <th>
-            <label for="gf_paymentspring_test_private_key"><?php _e( "Test Private Key", "gf_paymentspring" ); ?></label>
+            <label for="gf_paymentspring_test_private_key"><?php _e( "Test Private Key", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_test_private_key" ); ?>
           </th>
           <td>
             <input id="gf_paymentspring_test_private_key" name="gf_paymentspring_account[test_private_key]" value="<?php echo $options['test_private_key']; ?>" />
@@ -375,7 +377,7 @@ class GFPaymentSpring {
         </tr>
         <tr>
           <th>
-            <label for="gf_paymentspring_test_public_key"><?php _e( "Test Public Key", "gf_paymentspring" ); ?></label>
+            <label for="gf_paymentspring_test_public_key"><?php _e( "Test Public Key", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_test_public_key" ); ?>
           </th>
           <td>
             <input id="gf_paymentspring_test_public_key" name="gf_paymentspring_account[test_public_key]" value="<?php echo $options['test_public_key']; ?>" />
@@ -383,7 +385,7 @@ class GFPaymentSpring {
         </tr>
         <tr>
           <th>
-            <label for="gf_paymentspring_live_private_key"><?php _e( "Live Private Key", "gf_paymentspring" ); ?></label>
+            <label for="gf_paymentspring_live_private_key"><?php _e( "Live Private Key", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_live_private_key" ); ?>
           </th>
           <td>
             <input id="gf_paymentspring_live_private_key" name="gf_paymentspring_account[live_private_key]" value="<?php echo $options['live_private_key']; ?>" />
@@ -391,7 +393,7 @@ class GFPaymentSpring {
         </tr>
         <tr>
           <th>
-            <label for="gf_paymentspring_live_public_key"><?php _e( "Live Public Key", "gf_paymentspring" ); ?></label>
+            <label for="gf_paymentspring_live_public_key"><?php _e( "Live Public Key", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_live_public_key" ); ?>
           </th>
           <td>
             <input id="gf_paymentspring_live_public_key" name="gf_paymentspring_account[live_public_key]" value="<?php echo $options['live_public_key']; ?>" />
@@ -400,18 +402,29 @@ class GFPaymentSpring {
       </table>
 
       <p class="submit">
-        <input type="submit" name="gf_paymentspring_submit" value="Save Settings">
+        <input type="submit" name="gf_paymentspring_submit" class="button-primary" value="<?php _e( "Save Settings" ); ?>">
       </p>
     </form>
     <?php
   }
 
-  public static function validate_settings( $input ) {
+  public static function validate_settings ( $input ) {
     return array(
       "mode" => $input["mode"] == "live" ? "live" : "test",
       "test_private_key" => preg_replace( "/[^a-zA-Z0-9_]/", "", $input["test_private_key"] ),
       "test_public_key"  => preg_replace( "/[^a-zA-Z0-9_]/", "", $input["test_public_key"]  ),
       "live_private_key" => preg_replace( "/[^a-zA-Z0-9_]/", "", $input["live_private_key"] ),
       "live_public_key"  => preg_replace( "/[^a-zA-Z0-9_]/", "", $input["live_public_key"]  )  );
+  }
+
+  public static function add_tooltips ( $tooltips ) {
+    $tooltips["gf_paymentspring_api_mode"] = "<h6>" . __( "API Mode" ) . "</h6>" . __( "Select 'Test' mode to run charges in the PaymentSpring test environment. Switch to 'Live' mode when you want to run charges for real." );
+    $tooltips["gf_paymentspring_test_private_key"] = "<h6>" . __( "Test Private Key" ) . "</h6>" . __( "Enter your test mode private key." );
+    $tooltips["gf_paymentspring_test_public_key"]  = "<h6>" . __( "Test Public Key" )  . "</h6>" . __( "Enter your test mode public key." );
+    $tooltips["gf_paymentspring_live_private_key"] = "<h6>" . __( "Live Private Key" ) . "</h6>" . __( "Enter your live mode private key." );
+    $tooltips["gf_paymentspring_live_public_key"]  = "<h6>" . __( "Live Public Key" )  . "</h6>" . __( "Enter your live mode public key." );
+    $tooltips["gf_paymentspring_use_card_checkbox"]  = "<h6>" . __( "Use with PaymentSpring?" )  . "</h6>" . __( "Check this box if you want to use PaymentSpring to process transactions using card information from this Credit Card field." );
+    $tooltips["gf_paymentspring_amount_field"]  = "<h6>" . __( "PaymentSpring Amount Field" )  . "</h6>" . __( "Select the field containing the amount to charge to the card information entered into this field. If new fields are added to this form the form will have to be saved before they appear here." );
+    return $tooltips;
   }
 }
