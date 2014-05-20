@@ -27,6 +27,7 @@
 
 add_action( "init", array( "GFPaymentSpring", "init" ) );
 add_action( "admin_init", array( "GFPaymentSpring", "admin_init" ) );
+register_activation_hook( __FILE__, array( "GFPaymentSpring", "activate" ) );
 
 class GFPaymentSpring {
 
@@ -44,14 +45,41 @@ class GFPaymentSpring {
 
   public static function admin_init () {
     if ( is_admin() ) {
+      if ( ! class_exists( "GFForms" ) || ! class_exists( "RGForms" ) ) {
+        // Gravity Forms was deactivated, we need to deactivate too.
+        deactivate_plugins( plugin_basename( __FILE__ ) );
+        return;
+      }
+
       RGForms::add_settings_page("PaymentSpring", array("GFPaymentSpring", "settings_page"), "");
       register_setting( "gf_paymentspring_account_options", "gf_paymentspring_account", array( "GFPaymentSpring", "validate_settings" ) );
+
+      add_filter( "plugin_action_links_" . plugin_basename( __FILE__ ), array("GFPaymentSpring", "add_plugin_action_links" ) );
 
       add_action( "gform_field_standard_settings", array( "GFPaymentSpring", "field_settings_checkbox" ), 10, 2 );
       add_action( "gform_editor_js", array( "GFPaymentSpring", "field_settings_js" ) );
 
       add_filter( "gform_enable_credit_card_field", "__return_true" );
     }
+  }
+
+  public static function activate () {
+    if ( ! class_exists( "GFForms" ) || ! class_exists( "RGForms" ) ) {
+      deactivate_plugins( plugin_basename( __FILE__ ) );
+      wp_die( __( "Please install and activate Gravity Forms first.", "gf_paymentspring" ) );
+    }
+  }
+
+  /**
+   * Inserts the "Settings" link under the plugin entry on the plugin page.
+   */
+  public static function add_plugin_action_links ( $links ) {
+    return array_merge (
+      array (
+        "<a href='" . self_admin_url( "admin.php?page=gf_settings&subview=PaymentSpring" ) . "'>" . __( "Settings", "gf_paymentspring" ) . "</a>"
+      ),
+      $links
+    );
   }
 
   public static function validate_form ( $validation_result ) {
@@ -70,6 +98,17 @@ class GFPaymentSpring {
     $token_id = rgpost( "token_id" );
     $amount = rgpost( "input_" . rgar( $cc_field, "field_paymentspring_amount" ) );
 
+    if ( strpos( $amount, "." ) !== false || strpos( $amount, "," ) !== false ) {
+      // The amount field is in a "$1,234.56" format, strip out non-numeric
+      // characters to yield the charge amount in cents, e.g. "123456".
+      $amount = preg_replace( "/[^0-9]/", "", $amount );
+    }
+    else {
+      // The Total field returns the amount as an integer dollar amount for
+      // some reason, convert to cents by multiplying by 100 and truncating.
+      $amount = intval( $amount * 100 );
+    }
+
     if ( $token_id == false ) {
       $validation_result["is_valid"] = false;
       $cc_field["failed_validation"] = true;
@@ -84,7 +123,9 @@ class GFPaymentSpring {
       return $validation_result;
     }
 
-    $response = GFPaymentSpring::post_charge( $token_id, intval( $amount * 100 ) );
+    $response = GFPaymentSpring::post_charge( $token_id, $amount );
+    error_log( print_r( $amount, true ) );
+    error_log( print_r( $response, true ) );
 
     if ( is_wp_error( $response ) ) {
       $validation_result["is_valid"] = false;
