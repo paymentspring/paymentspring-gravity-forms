@@ -74,7 +74,6 @@ function validate_field (valid, field, message) {
 }
 
 function validate_card () {
-    return true;
     var ccf = get_card_fields();
 
     return (validate_field(paymentspring.validateCardNumber(ccf["card_number"].val()), ccf["card_number"], "Please enter a valid card number.") &&
