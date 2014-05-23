@@ -37,12 +37,31 @@ class GFPaymentSpring {
     load_plugin_textdomain( "gf_paymentspring" );
 
     add_filter( "gform_field_content", array( "GFPaymentSpring", "block_card_field" ), 10, 5 );
-    add_filter( "gform_get_form_filter", array( "GFPaymentSpring", "inject_card_tokenizing_js" ), 10, 2 );
+    add_filter( "gform_register_init_scripts", array( "GFPaymentSpring", "inject_card_tokenizing_js" ), 10, 3 );
 
     add_filter( "gform_validation", array( "GFPaymentSpring", "validate_form" ) );
     add_filter( "gform_entry_created", array( "GFPaymentSpring", "process_transaction" ), 10, 2 );
 
+    add_filter( "gform_pre_submission_filter", array( "GFPaymentSpring", "pre_sub" ) );
+    add_filter( "gform_after_submission", array( "GFPaymentSpring", "asdf" ), 10, 2);
+
     add_filter( "gform_tooltips", array( "GFPaymentSpring", "add_tooltips" ) );
+  }
+
+  public static function pre_sub ( $form ) {
+    error_log( print_r( $form, true ) );
+    error_log( print_r( $_POST, true ) );
+    return $form;
+  }
+
+  public static function asdf ($entry, $form) {
+    error_log( print_r( $entry, true ) );
+    if ( $entry["is_fulfilled"] ) {
+      error_log( "FULFILLED" );
+    }
+    else {
+      error_log(" NOT FULFILLED" );
+    }
   }
 
   public static function admin_init () {
@@ -98,6 +117,7 @@ class GFPaymentSpring {
     }
 
     $token_id = rgpost( "token_id" );
+    $amount_field = &GFPaymentSpring::get_field_by_id( $form, rgar( $cc_field, "field_paymentspring_amount" ) );
     $amount = rgpost( "input_" . rgar( $cc_field, "field_paymentspring_amount" ) );
 
     if ( strpos( $amount, "." ) !== false || strpos( $amount, "," ) !== false ) {
@@ -114,14 +134,14 @@ class GFPaymentSpring {
     if ( $token_id == false ) {
       $validation_result["is_valid"] = false;
       $cc_field["failed_validation"] = true;
-      $cc_field["validation_message"] = __( "A PaymentSpring token could not be created. Errors: ", "gf_paymentspring" ) . rgpost( "token_error" );
+      $cc_field["validation_message"] = __( "A PaymentSpring token could not be created.", "gf_paymentspring" );
       return $validation_result;
     }
 
-    if ( ! $amount ) {
+    if ( ! $amount || $amount < 0 ) {
       $validation_result["is_valid"] = false;
-      $cc_field["failed_validation"] = true;
-      $cc_field["validation_message"] = __( "A suitable amount could not be found: ", "gf_paymentspring" ) . $amount;
+      $amount_field["failed_validation"] = true;
+      $amount_field["validation_message"] = __( "Invalid purchase amount.", "gf_paymentspring" );
       return $validation_result;
     }
 
@@ -170,7 +190,9 @@ class GFPaymentSpring {
     $cc_field = GFPaymentSpring::get_credit_card_field( $form );
     $entry[$cc_field["id"] . ".1"] = $response->card_number;
 
+    error_log( "saving form" );
     RGFormsModel::update_lead( $entry );
+    error_log( print_r( $entry, true ) );
 
     GFPaymentSpring::$transaction = "";
   }
@@ -198,12 +220,23 @@ class GFPaymentSpring {
    * Returns a reference to the first credit card field found on the provided
    * form.
    */
-  public static function &get_credit_card_field ( $form ) {
-    foreach ( $form["fields"] as &$field )
-    {
+  public static function &get_credit_card_field ( &$form ) {
+    foreach ( $form["fields"] as &$field ) {
       if ($field["type"] == "creditcard" ) {
         return $field;
-        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Returns a reference to the first field on the form with the id provided
+   */
+  public static function &get_field_by_id ( &$form, $id ) {
+    foreach ( $form["fields"] as &$field ) {
+      if ($field["id"] == $id ) {
+        return $field;
+      }
     }
     return false;
   }
@@ -300,21 +333,17 @@ class GFPaymentSpring {
    *
    * gform_get_form_filter
    */
-  public static function inject_card_tokenizing_js ( $form_string, $form ) {
-    if ( ! GFPaymentSpring::is_paymentspring_form( $form ) ) {
-      return $form_string;
+  public static function inject_card_tokenizing_js ( $form, $field_values, $is_ajax ) {
+    $cc_field = &GFPaymentSpring::get_credit_card_field( $form );
+    if ( GFPaymentSpring::is_paymentspring_field( $cc_field ) ) {
+
+      GFFormDisplay::add_init_script( $form["id"], "gf_paymentspring_api", GFFormDisplay::ON_PAGE_RENDER, file_get_contents( plugin_dir_path( __FILE__ ) . "js/paymentspring.js" ) );
+      GFFormDisplay::add_init_script( $form["id"], "gf_paymentspring_validator", GFFormDisplay::ON_PAGE_RENDER,
+          str_replace( array( "{\$form_id}", "{\$cc_field_id}", "{\$public_key}" ), array( $form["id"], $cc_field["id"], GFPaymentSpring::get_public_key() ), 
+          file_get_contents( WP_PLUGIN_DIR . "/gravity-forms-paymentspring/js/form_filter.js" ) ) );
     }
-    foreach ( $form["fields"] as $field )
-    {
-      if ($field["type"] == "creditcard" ) {
-        $form_string .= "<script type='text/javascript' src='" . plugins_url("js/paymentspring.js", __FILE__) . "'></script>";
-        return $form_string .= "<script type='text/javascript'>" . 
-          str_replace( array( "{\$form_id}", "{\$cc_field_id}", "{\$public_key}" ), array( $form["id"], $field["id"], GFPaymentSpring::get_public_key() ), 
-                        file_get_contents( WP_PLUGIN_DIR . "/gravity-forms-paymentspring/js/form_filter.js" ) ) . 
-        "</script>";
-        }
-    }
-    return $form_string;
+
+    return $form;
   }
 
   public static function is_paymentspring_form ( $form ) {
@@ -358,7 +387,7 @@ class GFPaymentSpring {
             <label for="gf_paymentspring_mode"><?php _e( "API Mode", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_api_mode" ); ?>
           </th>
           <td>
-            <input type="radio" name="gf_paymentspring_account[mode]" id="gf_paymentspring_mode_live" value="live" 
+            <input type="radio" name="gf_paymentspring_account[mode]" id="gf_paymentspring_mode_live" value="live"
               <?php echo $options['mode'] == 'live' ? 'checked="checked"' : ''; ?> />
             <label class="inline" for="gf_paymentspring_mode_live"><?php _e( "Live", "gf_paymentspring" ); ?></label>
 
@@ -372,7 +401,7 @@ class GFPaymentSpring {
             <label for="gf_paymentspring_test_private_key"><?php _e( "Test Private Key", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_test_private_key" ); ?>
           </th>
           <td>
-            <input id="gf_paymentspring_test_private_key" name="gf_paymentspring_account[test_private_key]" value="<?php echo $options['test_private_key']; ?>" />
+            <input id="gf_paymentspring_test_private_key" name="gf_paymentspring_account[test_private_key]" style="width:350px" value="<?php echo $options['test_private_key']; ?>" />
           </td>
         </tr>
         <tr>
@@ -380,7 +409,7 @@ class GFPaymentSpring {
             <label for="gf_paymentspring_test_public_key"><?php _e( "Test Public Key", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_test_public_key" ); ?>
           </th>
           <td>
-            <input id="gf_paymentspring_test_public_key" name="gf_paymentspring_account[test_public_key]" value="<?php echo $options['test_public_key']; ?>" />
+            <input id="gf_paymentspring_test_public_key" name="gf_paymentspring_account[test_public_key]" style="width:350px" value="<?php echo $options['test_public_key']; ?>" />
           </td>
         </tr>
         <tr>
@@ -388,7 +417,7 @@ class GFPaymentSpring {
             <label for="gf_paymentspring_live_private_key"><?php _e( "Live Private Key", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_live_private_key" ); ?>
           </th>
           <td>
-            <input id="gf_paymentspring_live_private_key" name="gf_paymentspring_account[live_private_key]" value="<?php echo $options['live_private_key']; ?>" />
+            <input id="gf_paymentspring_live_private_key" name="gf_paymentspring_account[live_private_key]" style="width:350px" value="<?php echo $options['live_private_key']; ?>" />
           </td>
         </tr>
         <tr>
@@ -396,7 +425,7 @@ class GFPaymentSpring {
             <label for="gf_paymentspring_live_public_key"><?php _e( "Live Public Key", "gf_paymentspring" ); ?></label><?php gform_tooltip( "gf_paymentspring_live_public_key" ); ?>
           </th>
           <td>
-            <input id="gf_paymentspring_live_public_key" name="gf_paymentspring_account[live_public_key]" value="<?php echo $options['live_public_key']; ?>" />
+            <input id="gf_paymentspring_live_public_key" name="gf_paymentspring_account[live_public_key]" style="width:350px" value="<?php echo $options['live_public_key']; ?>" />
           </td>
         </tr>
       </table>

@@ -35,7 +35,6 @@ function create_token (callback) {
 
 function token_callback (response) {
     var form = jQuery("#gform_{$form_id}");
-    console.log(response);
     if (response.errors) {
         validate_field(false, get_card_fields()["card_number"], jQuery.map(response.errors, function (val, i) { return translate_token_error(val);}).join("<br/>"));
     }
@@ -55,19 +54,20 @@ function validate_field (valid, field, message) {
         if (jQuery(".validation_error").length == 0) {
             jQuery(".gform_heading").after("<div class='validation_error'>There was a problem with your submission. Errors have been highlighted below.</div>");
         }
-        if (jQuery(".gfield_error").length == 0) {
-            jQuery("#field_{$form_id}_{$cc_field_id}").addClass("gfield_error");
-        }
-        if (jQuery(".validation_message").length == 0) {
-            jQuery("#field_{$form_id}_{$cc_field_id}").append("<div class='gfield_description validation_message'>" + message + "</div>");
-        } else {
-            jQuery(".validation_message").text(message);
-        }
+
+        // Highlights the error field in red.
+        jQuery(".gfield_error").removeClass("gfield_error");
+        jQuery("#field_{$form_id}_{$cc_field_id}").addClass("gfield_error");
+
+        // Displays the validation message under the error field.
+        jQuery(".validation_message").remove();
+        jQuery("#field_{$form_id}_{$cc_field_id}").append("<div class='gfield_description validation_message'>" + message + "</div>");
+
         field.focus();
         field.select();
-        console.log(field);
 
-        jQuery("#gform_ajax_spinner_{$form_id}").remove();
+        // Things added by GForms to indicate the form is being submitted.
+        jQuery(".gform_ajax_spinner").remove();
         window["gf_submitting_{$form_id}"] = false;
     }
     return valid;
@@ -82,14 +82,22 @@ function validate_card () {
         validate_field(paymentspring.validateName(ccf["cardholder_name"].val()), ccf["cardholder_name"], "Please enter a valid cardholder name."));
 }
 
-jQuery(document).bind("gform_post_render", function (event, f_id, current_page) {
-    if (f_id !== {$form_id}) {
-        return;
-    }
+if (!jQuery("#gform_{$form_id} #input_{$form_id}_{$cc_field_id}_1").is(":hidden")) {
+    // Card field is on this page.
     jQuery("#gform_{$form_id}").submit(function () {
-        if (validate_card()) {
-            create_token(token_callback);
+        var target = jQuery("#gform_target_page_number_{$form_id}").val();
+        var source = jQuery("#gform_source_page_number_{$form_id}").val();
+        if (target == 0 ) {
+            // Form submission.
+            if (validate_card()) {
+                create_token(token_callback);
+            }
+        } else if (target < source) {
+            // The user wants to move to the previous page.
+            return true;
+        } else if (target > source) {
+            alert("Credit Card field must be on the last page of a multi-page form.");
         }
         return false;
     });
-});
+}
