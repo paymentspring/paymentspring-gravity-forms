@@ -1,5 +1,8 @@
 window.paymentspring = (function () {
 
+    var jsonpTimeout;
+    var jsonpURL = "http://paymentspring.dev:9296/api/v1/tokens/jsonp";
+
     /**
      * @constructor
      */
@@ -15,8 +18,8 @@ window.paymentspring = (function () {
         this.callback = callback;
         this.script = document.createElement("script");
         this.script.type = "text/javascript";
-        this.script.id = "tempscript";
-        this.script.src = "http://paymentspring.dev:9296/api/v1/tokens/jsonp"
+        this.script.id = "paymentspring_request_script";
+        this.script.src = jsonpURL
         + "?public_api_key=" + this.key
         + "&card_number=" + card_number
         + "&csc=" + csc
@@ -26,9 +29,12 @@ window.paymentspring = (function () {
         + "&callback=paymentspring.onComplete";
 
         document.body.appendChild(this.script);
+        var closure_this = this;
+        jsonpTimeout = setTimeout(function() { document.body.removeChild(closure_this.script); closure_this.script = null; callback(null); }, 5000);
     };
 
     PaymentSpring.prototype.onComplete = function(data) {
+        clearTimeout(jsonpTimeout);
         document.body.removeChild(this.script);
         this.script = null;
         this.callback(data);

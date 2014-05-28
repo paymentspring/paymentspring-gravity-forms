@@ -34,15 +34,12 @@ function create_token (callback) {
 }
 
 function token_callback (response) {
-    var form = jQuery("#gform_{$form_id}");
-    if (response.errors) {
+    if (!response) {
+        validate_field(false, get_card_fields()["card_number"], "Token creation timeout. Your card has not been charged.");
+    } else if (response.errors) {
         validate_field(false, get_card_fields()["card_number"], jQuery.map(response.errors, function (val, i) { return translate_token_error(val);}).join("<br/>"));
-    }
-    else {
-        form.append("<input type='hidden' name='card_exp_month' value='"  + response["card_exp_month"] + "' />");
-        form.append("<input type='hidden' name='card_exp_year' value='"   + response["card_exp_year"] + "' />");
-        form.append("<input type='hidden' name='card_owner_name' value='" + response["card_owner_name"] + "' />");
-        form.append("<input type='hidden' name='card_type' value='"       + response["card_type"] + "' />");
+    } else {
+        var form = jQuery("#gform_{$form_id}");
         form.append("<input type='hidden' name='token_id' value='"        + response["id"] + "' />");
         form.append("<input type='hidden' name='card_last_4' value='"     + response["last_4"] + "' />");
         form.get(0).submit();

@@ -39,29 +39,11 @@ class GFPaymentSpring {
     add_filter( "gform_field_content", array( "GFPaymentSpring", "block_card_field" ), 10, 5 );
     add_filter( "gform_register_init_scripts", array( "GFPaymentSpring", "inject_card_tokenizing_js" ), 10, 3 );
 
-    add_filter( "gform_validation", array( "GFPaymentSpring", "validate_form" ) );
+    add_filter( "gform_validation", array( "GFPaymentSpring", "validate_form" ), PHP_INT_MAX, 1 );
+    add_filter( "gform_validation_message", array( "GFPaymentSpring", "card_charged_message" ), 10, 2 );
     add_filter( "gform_entry_created", array( "GFPaymentSpring", "process_transaction" ), 10, 2 );
 
-    add_filter( "gform_pre_submission_filter", array( "GFPaymentSpring", "pre_sub" ) );
-    add_filter( "gform_after_submission", array( "GFPaymentSpring", "asdf" ), 10, 2);
-
     add_filter( "gform_tooltips", array( "GFPaymentSpring", "add_tooltips" ) );
-  }
-
-  public static function pre_sub ( $form ) {
-    error_log( print_r( $form, true ) );
-    error_log( print_r( $_POST, true ) );
-    return $form;
-  }
-
-  public static function asdf ($entry, $form) {
-    error_log( print_r( $entry, true ) );
-    if ( $entry["is_fulfilled"] ) {
-      error_log( "FULFILLED" );
-    }
-    else {
-      error_log(" NOT FULFILLED" );
-    }
   }
 
   public static function admin_init () {
@@ -108,7 +90,8 @@ class GFPaymentSpring {
     $cc_field = &GFPaymentSpring::get_credit_card_field( $form );
     $current_page = rgpost( "gform_source_page_number_" . $form["id"] );
 
-    if ( $cc_field == false 
+    if ( $validation_result["is_valid"] == false
+         || $cc_field == false 
          || ! GFPaymentSpring::is_paymentspring_form( $form )
          || $current_page != $cc_field["pageNumber"]
          || RGFormsModel::is_field_hidden( $form, $cc_field, array( ) ) ) {
@@ -152,20 +135,48 @@ class GFPaymentSpring {
     if ( is_wp_error( $response ) ) {
       $validation_result["is_valid"] = false;
       $cc_field["failed_validation"] = true;
-      $cc_field["validation_message"] = __( "A PaymentSpring charge call failed. Errors: ", "gf_paymentspring" ) . $response->get_error_message();
+      $cc_field["validation_message"] = __( "Could not connect to PaymentSpring. Please contact the site administrator.", "gf_paymentspring" ) 
+        . "<br />" . $response->get_error_message();
       return $validation_result;
     }
 
     if ( ! in_array( $response["response"]["code"], array( 200, 201 ) ) ) {
       $validation_result["is_valid"] = false;
       $cc_field["failed_validation"] = true;
-      $cc_field["validation_message"] = __( "A PaymentSpring charge failed. Errors: ", "gf_paymentspring" ) . $response["body"];
+      $cc_field["validation_message"] = __( "Your card could not be charged.", "gf_paymentspring" ) . "<br />" . GFPaymentSpring::format_json_errors( $response["body"] );
       return $validation_result;
     }
 
     GFPaymentSpring::$transaction = $response["body"];
 
     return $validation_result;
+  }
+
+  public static function format_json_errors ( $json_errors ) {
+    $errors = json_decode( $json_errors );
+    $errors = $errors->errors;
+    $str = "";
+    foreach ( $errors as $error ) {
+      $str .= "Code " . $error->code . " : " . $error->message . "<br />";
+    }
+    return $str;
+  }
+
+  /**
+   * If an additional validation hook is executed after our validation hook and
+   * fails GF will prompt the user to fix their error and resubmit, even though
+   * their card has already been charged. If a transaction object exists when
+   * the validation message is being generated that means the card has already
+   * been charged. Therefore we need to intercept the validation message.
+   */
+  public static function card_charged_message ( $validation_message ) {
+    if ( ! empty( GFPaymentSpring::$transaction ) ) {
+      $msg = __( "Your card has been charged, but there was an unrelated error. Do not resubmit the form. Please contact the site administrator.", "gf_paymentspring" );
+      $s = "<div class='validation_error'>" . $msg . "</div><script>alert('" . $msg . "');</script>";
+      $s .= "<script>jQuery(\"form[id^='gform_']\").submit(function(){alert('" . $msg . "');return false;});</script>";
+      return $s;
+    }
+    return $validation_message;
   }
 
   /**
@@ -187,12 +198,11 @@ class GFPaymentSpring {
     $entry["is_fulfilled"] = $response->status == "SETTLED";
     $entry["transaction_type"] = 1; // one-time payment vs. subscription
 
-    $cc_field = GFPaymentSpring::get_credit_card_field( $form );
-    $entry[$cc_field["id"] . ".1"] = $response->card_number;
-
-    error_log( "saving form" );
     RGFormsModel::update_lead( $entry );
-    error_log( print_r( $entry, true ) );
+
+    // Inserts the last 4 digits of the card into the wp_rg_lead_detail table
+    $cc_field = GFPaymentSpring::get_credit_card_field( $form );
+    GFFormsModel::update_lead_field_value( $form, $entry, $cc_field, 0, $cc_field["id"] . ".1", $response->card_number );
 
     GFPaymentSpring::$transaction = "";
   }
@@ -334,7 +344,7 @@ class GFPaymentSpring {
    * gform_get_form_filter
    */
   public static function inject_card_tokenizing_js ( $form, $field_values, $is_ajax ) {
-    $cc_field = &GFPaymentSpring::get_credit_card_field( $form );
+    $cc_field = GFPaymentSpring::get_credit_card_field( $form );
     if ( GFPaymentSpring::is_paymentspring_field( $cc_field ) ) {
 
       GFFormDisplay::add_init_script( $form["id"], "gf_paymentspring_api", GFFormDisplay::ON_PAGE_RENDER, file_get_contents( plugin_dir_path( __FILE__ ) . "js/paymentspring.js" ) );
@@ -347,7 +357,7 @@ class GFPaymentSpring {
   }
 
   public static function is_paymentspring_form ( $form ) {
-    $cc_field = &GFPaymentSpring::get_credit_card_field( $form );
+    $cc_field = GFPaymentSpring::get_credit_card_field( $form );
     return GFPaymentSpring::is_paymentspring_field( $cc_field );
   }
 
