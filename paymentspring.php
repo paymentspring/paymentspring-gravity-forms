@@ -32,6 +32,7 @@ register_activation_hook( __FILE__, array( "GFPaymentSpring", "activate" ) );
 class GFPaymentSpring {
 
   private static $transaction = "";
+  const apiURL = "http://localhost:9296/api/v1/charge";
 
   public static function init () {
     load_plugin_textdomain( "gf_paymentspring" );
@@ -41,7 +42,7 @@ class GFPaymentSpring {
 
     add_filter( "gform_validation", array( "GFPaymentSpring", "validate_form" ), PHP_INT_MAX, 1 );
     add_filter( "gform_validation_message", array( "GFPaymentSpring", "card_charged_message" ), 10, 2 );
-    add_filter( "gform_entry_created", array( "GFPaymentSpring", "process_transaction" ), 10, 2 );
+    add_filter( "gform_entry_post_save", array( "GFPaymentSpring", "process_transaction" ), 10, 2 );
 
     add_filter( "gform_tooltips", array( "GFPaymentSpring", "add_tooltips" ) );
   }
@@ -87,12 +88,15 @@ class GFPaymentSpring {
 
   public static function validate_form ( $validation_result ) {
     $form = &$validation_result["form"];
+    if ( ! GFPaymentSpring::is_paymentspring_form( $form ) ) {
+      return $validation_result;
+    }
+
     $cc_field = &GFPaymentSpring::get_credit_card_field( $form );
     $current_page = rgpost( "gform_source_page_number_" . $form["id"] );
 
     if ( $validation_result["is_valid"] == false
          || $cc_field == false 
-         || ! GFPaymentSpring::is_paymentspring_form( $form )
          || $current_page != $cc_field["pageNumber"]
          || RGFormsModel::is_field_hidden( $form, $cc_field, array( ) ) ) {
       // We don't need to validate this form/page.
@@ -100,8 +104,27 @@ class GFPaymentSpring {
     }
 
     $token_id = rgpost( "token_id" );
+    $ps_fields = GFPaymentSpring::paymentspring_fields( );
+    foreach( GFPaymentSpring::paymentspring_fields( ) as $key => $value ) {
+      $id = rgar( $cc_field, "field_paymentspring_{$key}" );
+      if ( $id ) {
+        $ps_fields[$key] = rgpost( "input_" . str_replace( ".", "_", $id ) );
+      }
+      else {
+        $ps_fields[$key] = null;
+      }
+    }
+
     $amount_field = &GFPaymentSpring::get_field_by_id( $form, rgar( $cc_field, "field_paymentspring_amount" ) );
-    $amount = rgpost( "input_" . rgar( $cc_field, "field_paymentspring_amount" ) );
+    $amount = $ps_fields["amount"];
+    error_log( print_r( $amount, true ) );
+
+    if ( ! $amount_field ) {
+      $validation_result["is_valid"] = false;
+      $cc_field["failed_validation"] = true;
+      $cc_field["validation_message"] = __( "Amount field configured incorrectly.", "gf_paymentspring" );
+      return $validation_result;
+    }
 
     if ( strpos( $amount, "." ) !== false || strpos( $amount, "," ) !== false ) {
       // The amount field is in a "$1,234.56" format, strip out non-numeric
@@ -114,12 +137,16 @@ class GFPaymentSpring {
       $amount = intval( $amount * 100 );
     }
 
+    $ps_fields["amount"] = $amount;
+
     if ( $token_id == false ) {
       $validation_result["is_valid"] = false;
       $cc_field["failed_validation"] = true;
       $cc_field["validation_message"] = __( "A PaymentSpring token could not be created.", "gf_paymentspring" );
       return $validation_result;
     }
+
+    error_log( print_r( $amount, true ) );
 
     if ( ! $amount || $amount < 0 ) {
       $validation_result["is_valid"] = false;
@@ -128,8 +155,8 @@ class GFPaymentSpring {
       return $validation_result;
     }
 
-    $response = GFPaymentSpring::post_charge( $token_id, $amount );
-    error_log( print_r( $amount, true ) );
+    $ps_fields["token"] = $token_id;
+    $response = GFPaymentSpring::post_charge( $ps_fields );
     error_log( print_r( $response, true ) );
 
     if ( is_wp_error( $response ) ) {
@@ -182,7 +209,7 @@ class GFPaymentSpring {
   /**
    * Stores transaciton details in GF entry object.
    *
-   * gform_entry_created
+   * gform_entry_post_save
    */
   public static function process_transaction ( $entry, $form ) {
     if ( empty( GFPaymentSpring::$transaction ) ) {
@@ -202,28 +229,26 @@ class GFPaymentSpring {
 
     // Inserts the last 4 digits of the card into the wp_rg_lead_detail table
     $cc_field = GFPaymentSpring::get_credit_card_field( $form );
+    $entry[$cc_field["id"] . ".1"] = $response->card_number;
     GFFormsModel::update_lead_field_value( $form, $entry, $cc_field, 0, $cc_field["id"] . ".1", $response->card_number );
 
     GFPaymentSpring::$transaction = "";
+    return $entry;
   }
 
   /**
    * Sends token and charge amount to paymentspring servers to charge token
    */
-  public static function post_charge ( $token, $amount ) {
+  public static function post_charge ( $params ) {
     $options = get_option( "gf_paymentspring_account" );
-    $url = "http://localhost:9296/api/v1/charge";
     $args = array(
       "method" => "POST",
       "headers" => array(
         "Authorization" => "Basic " . base64_encode( GFPaymentSpring::get_private_key() . ":" )
       ),
-      "body" => array(
-        "token" => $token,
-        "amount" => $amount
-      )
+      "body" => $params
     );
-    return wp_remote_post( $url, $args );
+    return wp_remote_post( GFPaymentSpring::apiURL, $args );
   }
 
   /**
@@ -236,7 +261,8 @@ class GFPaymentSpring {
         return $field;
       }
     }
-    return false;
+    $null = null;
+    return $null;
   }
 
   /**
@@ -248,7 +274,25 @@ class GFPaymentSpring {
         return $field;
       }
     }
-    return false;
+    $null = null;
+    return $null;
+  }
+
+  public static function paymentspring_fields () {
+    return array(
+      "amount" => "Amount",
+      //"first_name" => "First Name",
+      //"last_name" => "Last Name",
+      "address_1" => "Address 1",
+      "address_2" => "Address 2",
+      "city" => "City",
+      "state" => "State",
+      "zip" => "Zip",
+      "phone" => "Phone",
+      "fax" => "Fax",
+      "website" => "Website",
+      "company" => "Company"
+    );
   }
 
   /**
@@ -264,18 +308,30 @@ class GFPaymentSpring {
       <li class="paymentspring_card_setting field_setting">
         <input type="checkbox" id="field_paymentspring_card_value" onclick="jQuery('#paymentspring_customer_fields').toggle(); SetFieldProperty('field_paymentspring_card', this.checked);" />
         <label for="field_paymentspring_card_value" class="inline"><?php _e( "Use with PaymentSpring?", "gf_paymentspring" ); gform_tooltip( "gf_paymentspring_use_card_checkbox" ); ?></label>
-        <span id="paymentspring_customer_fields">
-          <br />
-          <label for="field_paymentspring_amount_value" class="inline"><?php _e( "Amount Field", "gf_paymentspring" ); gform_tooltip( "gf_paymentspring_amount_field" ); ?></label>
-          <select id="field_paymentspring_amount_value" onchange="SetFieldProperty('field_paymentspring_amount', this.value);">
-            <option value=""></option>
-            <?php 
-            $form = RGFormsModel::get_form_meta_by_id( $form_id );
-            foreach ( GFPaymentSpring::get_form_fields($form[0]) as $field ) { 
-              echo "<option value='" . $field[0] . "'>" . esc_html( $field[1] ) . "</option>\n";
-            } ?>
-          </select>
-        </span>
+        <div id="paymentspring_customer_fields">
+          <table style="width:375px">
+            <tbody>
+              <?php
+              $form = RGFormsModel::get_form_meta_by_id( $form_id );
+              foreach ( GFPaymentSpring::paymentspring_fields() as $key => $value ) {
+                echo "<tr>";
+                echo "<td style='width:100px'>";
+                echo "<label for='field_paymentspring_{$key}'>{$value}</label>";
+                echo "</td>";
+                echo "<td>";
+                echo "<select style='width:100%' id='field_paymentspring_{$key}' onchange=\"SetFieldProperty('field_paymentspring_{$key}', this.value);\">";
+                echo "<option value=''></option>";
+                foreach ( GFPaymentSpring::get_form_fields($form[0]) as $field ) { 
+                  echo "<option value='" . $field[0] . "'>" . esc_html( $field[1] ) . " (ID: " . $field[0] . ")" . "</option>\n";
+                }
+                echo "</select>";
+                echo "</td>";
+                echo "</tr>";
+              }
+              ?>
+            </tbody>
+          </table>
+        </div>
       </li>
       <?php
     }
@@ -310,11 +366,19 @@ class GFPaymentSpring {
   public static function field_settings_js () {
     ?>
     <script type='text/javascript'>
+      // Makes anything with the '.paymentspring_card_setting' class appear
+      // when the credit card settings drop down is clicked.
       fieldSettings["creditcard"] += ", .paymentspring_card_setting";
+
+      // Initializes inputs to stored values.
       jQuery(document).bind("gform_load_field_settings", function (event, field, form) {
         jQuery("#field_paymentspring_card_value").attr("checked", field["field_paymentspring_card"] == true);
         jQuery("#paymentspring_customer_fields").toggle(field["field_paymentspring_card"] == true);
-        jQuery("#field_paymentspring_amount_value").attr("value", field["field_paymentspring_amount"]);
+
+        var fields = [ <?php foreach ( GFPaymentSpring::paymentspring_fields() as $key => $value ) { echo "'{$key}',"; } ?> ];
+        fields.map(function(fname) {
+            jQuery("#field_paymentspring_" + fname).attr("value", field["field_paymentspring_" + fname]);
+        });
       });
     </script>
     <?php
