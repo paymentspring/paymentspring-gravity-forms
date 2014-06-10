@@ -329,10 +329,6 @@ class GFPaymentSpring {
                 echo "</td>";
                 echo "<td>";
                 echo "<select style='width:100%' id='field_paymentspring_{$key}' onchange=\"SetFieldProperty('field_paymentspring_{$key}', this.value);\">";
-                echo "<option value=''></option>";
-                foreach ( GFPaymentSpring::get_form_fields($form[0]) as $field ) { 
-                  echo "<option value='" . $field[0] . "'>" . esc_html( $field[1] ) . " (ID: " . $field[0] . ")" . "</option>\n";
-                }
                 echo "</select>";
                 echo "</td>";
                 echo "</tr>";
@@ -375,6 +371,25 @@ class GFPaymentSpring {
   public static function field_settings_js () {
     ?>
     <script type='text/javascript'>
+      function gf_paymentspring_populate_select() {
+          // Populates the select dropdowns in the credit card field properties
+          // tab. Updates list on field addition and deletion.
+          var options = ["<option value=''></option>"];
+          jQuery.each(window.form.fields, function(i, field) {
+              if (field.inputs){
+                  jQuery.each(field.inputs, function(i, input) {
+                      options.push("<option value='", input.id, "'>", field.label, " (", input.label, ") (ID: ", input.id, ")</option>");
+                  });
+              } else {
+                  options.push("<option value='", field.id, "'>", field.label, " (ID: ", field.id, ")</option>");
+              }
+          });
+          jQuery("select[id^=field_paymentspring_]").html(options.join(""));
+      }
+      jQuery(document).bind("gform_field_deleted", gf_paymentspring_populate_select);
+      jQuery(document).bind("gform_field_added", gf_paymentspring_populate_select);
+      gf_paymentspring_populate_select();
+
       // Makes anything with the '.paymentspring_card_setting' class appear
       // when the credit card settings drop down is clicked.
       fieldSettings["creditcard"] += ", .paymentspring_card_setting";
