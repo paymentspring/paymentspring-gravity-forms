@@ -40,6 +40,7 @@ class GFPaymentSpring {
     add_filter( "gform_field_content", array( "GFPaymentSpring", "block_card_field" ), 10, 5 );
     add_filter( "gform_register_init_scripts", array( "GFPaymentSpring", "inject_card_tokenizing_js" ), 10, 3 );
 
+    add_filter( "gform_pre_validation", array( "GFPaymentSpring", "remove_cc_field_requirement" ), 10, 1 );
     add_filter( "gform_validation", array( "GFPaymentSpring", "validate_form" ), PHP_INT_MAX, 1 );
     add_filter( "gform_validation_message", array( "GFPaymentSpring", "card_charged_message" ), 10, 2 );
     add_filter( "gform_entry_post_save", array( "GFPaymentSpring", "process_transaction" ), 10, 2 );
@@ -84,6 +85,14 @@ class GFPaymentSpring {
       ),
       $links
     );
+  }
+
+  public static function remove_cc_field_requirement ( $form ) {
+    $cc_field = &GFPaymentSpring::get_credit_card_field ( $form );
+    if ( GFPaymentSpring::is_paymentspring_field( $cc_field ) ) {
+      $cc_field["isRequired"] = false;
+    }
+    return $form;
   }
 
   public static function validate_form ( $validation_result ) {
