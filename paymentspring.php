@@ -423,7 +423,7 @@ class GFPaymentSpring {
       GFFormDisplay::add_init_script( $form["id"], "gf_paymentspring_api", GFFormDisplay::ON_PAGE_RENDER, file_get_contents( plugin_dir_path( __FILE__ ) . "js/paymentspring.js" ) );
       GFFormDisplay::add_init_script( $form["id"], "gf_paymentspring_validator", GFFormDisplay::ON_PAGE_RENDER,
           str_replace( array( "{\$form_id}", "{\$cc_field_id}", "{\$public_key}" ), array( $form["id"], $cc_field["id"], GFPaymentSpring::get_public_key() ), 
-          file_get_contents( WP_PLUGIN_DIR . "/gravity-forms-paymentspring/js/form_filter.js" ) ) );
+          file_get_contents( plugin_dir_path( __FILE__ ) . "js/form_filter.js" ) ) );
     }
 
     return $form;
