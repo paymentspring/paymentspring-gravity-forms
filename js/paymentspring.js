@@ -1,7 +1,7 @@
 window.paymentspring = (function () {
 
     var jsonpTimeout;
-    var jsonpURL = "http://paymentspring.dev:9296/api/v1/tokens/jsonp";
+    var jsonpURL = "https://api.paymentspring.com/api/v1/tokens/jsonp";
 
     /**
      * @constructor

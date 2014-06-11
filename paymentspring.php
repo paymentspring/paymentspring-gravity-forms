@@ -32,7 +32,7 @@ register_activation_hook( __FILE__, array( "GFPaymentSpring", "activate" ) );
 class GFPaymentSpring {
 
   private static $transaction = "";
-  const apiURL = "http://localhost:9296/api/v1/charge";
+  const apiURL = "https://api.paymentspring.com/api/v1/charge";
 
   public static function init () {
     load_plugin_textdomain( "gf_paymentspring" );
