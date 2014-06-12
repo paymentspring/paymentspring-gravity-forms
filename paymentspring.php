@@ -1,11 +1,11 @@
 <?php
 /**
- * Plugin Name: Gravity Forms PaymentSpring Add-On
- * Plugin URI: http://paymentspring.com/wordpress
+ * Plugin Name: PaymentSpring Gravity Forms Add-On
+ * Plugin URI: https://www.paymentspring.com/docs/integrations/wordpress
  * Description: Integrates Gravity Forms and PaymentSpring.
- * Version: 0.1.0
+ * Version: 1.0.0
  * Author: PaymentSpring
- * Author URI: http://paymentspring.com/
+ * Author URI: https://www.paymentspring.com/
  * License: GPL2
  *
  * ----------------------------------------------------------------------------
