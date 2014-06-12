@@ -16,6 +16,7 @@ Secure credit card processing with PaymentSpring beautifully integrated into Wor
 [PaymentSpring](https://www.paymentspring.com/) is a credit card processing gateway with a developer friendly API.  This plugin is officially supported by PaymentSpring and will allow you to send credit card data in a secure manner from a Gravity Forms form.
 
 > This plugin will not work if Gravity Forms is not installed.  You will need to purchase your own gravity forms license.
+
 > PaymentSpring API keys are required.  You can obtain your own by [registering for a free PaymentSpring test account](https://www.paymentspring.com/signup).
 
 == Installation ==
@@ -46,3 +47,8 @@ Yes, we require any page that has a credit card field be encrypted by SSL
 == Changelog ==
 = 1.0.0 =
 * Initial release
+
+== Upgrade Notice ==
+
+= 1.0.0 =
+Initial release
