@@ -38,6 +38,7 @@ class GFPaymentSpring {
     load_plugin_textdomain( "gf_paymentspring" );
 
     add_filter( "gform_field_content", array( "GFPaymentSpring", "block_card_field" ), 10, 5 );
+    add_filter( "gform_field_content", array( "GFPaymentSpring", "test_mode_message" ), 10, 5 );
     add_filter( "gform_register_init_scripts", array( "GFPaymentSpring", "inject_card_tokenizing_js" ), 10, 3 );
 
     add_filter( "gform_pre_validation", array( "GFPaymentSpring", "remove_cc_field_requirement" ), 10, 1 );
@@ -58,6 +59,9 @@ class GFPaymentSpring {
 
       RGForms::add_settings_page("PaymentSpring", array("GFPaymentSpring", "settings_page"), "");
       register_setting( "gf_paymentspring_account_options", "gf_paymentspring_account", array( "GFPaymentSpring", "validate_settings" ) );
+
+      add_filter( "gform_entry_meta", array( "GFPaymentSpring", "account_mode_meta" ), 10, 2 );
+      add_action( "gform_entry_info", array( "GFPaymentSpring", "account_mode_entry_info" ), 10, 2);
 
       add_filter( "plugin_action_links_" . plugin_basename( __FILE__ ), array("GFPaymentSpring", "add_plugin_action_links" ) );
 
@@ -87,12 +91,52 @@ class GFPaymentSpring {
     );
   }
 
+  /**
+   * Mark any PS CC fields as not required before performing validation. 
+   * This is needed because the values of the CC fields are not sent to the 
+   * server, causing validation to fail. CC validation is handled on the client
+   * side.
+   *
+   * gform_pre_validation
+   */
   public static function remove_cc_field_requirement ( $form ) {
     $cc_field = &GFPaymentSpring::get_credit_card_field ( $form );
     if ( GFPaymentSpring::is_paymentspring_field( $cc_field ) ) {
       $cc_field["isRequired"] = false;
     }
     return $form;
+  }
+
+  /**
+   * Adds the "Transaction Mode" entry meta key to all PS form entries. The
+   * value of the meta column is populated in process_transaction.
+   *
+   * gform_entry_meta
+   */
+  public static function account_mode_meta ( $entry_meta, $form_id ) {
+    $forms = RGFormsModel::get_form_meta_by_id( $form_id );
+    if ( GFPaymentSpring::is_paymentspring_form( $forms[0] ) ) {
+      // The below key corresponds to meta_key in the wp_rg_lead_meta table
+      $entry_meta["gf_paymentspring_transaction_mode"] = array(
+        "label" => __( "Transaction Mode", "gf_paymentspring" ),
+        "is_numeric" => false,
+        "is_default_column" => false
+      );
+    }
+    return $entry_meta;
+  }
+
+  /**
+   * Displays the account mode the transaction was made under in the Info panel
+   * on the entry view page.
+   * 
+   * gform_entry_info
+   */
+  public static function account_mode_entry_info ( $form_id, $lead ) {
+    $forms = RGFormsModel::get_form_meta_by_id( $form_id );
+    if ( GFPaymentSpring::is_paymentspring_form( $forms[0] ) ) {
+      echo __( "Transaction Mode" ) . ": " . gform_get_meta( $lead["id"], "gf_paymentspring_transaction_mode" );
+    }
   }
 
   public static function validate_form ( $validation_result ) {
@@ -240,6 +284,9 @@ class GFPaymentSpring {
     $cc_field = GFPaymentSpring::get_credit_card_field( $form );
     $entry[$cc_field["id"] . ".1"] = $response->card_number;
     GFFormsModel::update_lead_field_value( $form, $entry, $cc_field, 0, $cc_field["id"] . ".1", $response->card_number );
+
+    $options = get_option( "gf_paymentspring_account" );
+    gform_update_meta( $entry["id"], "gf_paymentspring_transaction_mode", $options["mode"] );
 
     GFPaymentSpring::$transaction = "";
     return $entry;
@@ -415,13 +462,29 @@ class GFPaymentSpring {
    * gform_field_content
    */
   public static function block_card_field ( $input, $field, $value, $lead_id, $form_id ) {
-    if ( $field["type"] == "creditcard" and GFPaymentSpring::is_paymentspring_field( $field ) ) {
+    if ( $field["type"] == "creditcard" and GFPaymentSpring::is_paymentspring_field( $field ) and $lead_id == 0 ) {
       // Strip out name="input_X.X" attributes from credit card field.
       return preg_replace("/name\s*=\s*[\"']input_{$field['id']}\.\d+.*?[\"']/", "", $input);
     }
     else {
       return $input;
     }
+  }
+
+  /**
+   * If the account is in test mode display that information on the card field
+   * label when showing the form.
+   *
+   * gform_field_content
+   */
+  public static function test_mode_message ( $input, $field, $value, $lead_id, $form_id ) {
+    if ( $field["type"] == "creditcard" and GFPaymentSpring::is_paymentspring_field( $field ) and $lead_id == 0 ) {
+      $options = get_option( "gf_paymentspring_account" );
+      if ( $options["mode"] == "test" ) {
+        return str_replace( __( "Credit Card", "gravityforms" ), __( "Credit Card", "gravityforms" ) . "<span class='gfield_required'>" . __( "[TEST MODE]", "gf_paymentspring" ) . "</span>", $input );
+      }
+    }
+    return $input;
   }
 
   /**
