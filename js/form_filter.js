@@ -79,7 +79,8 @@ function validate_card () {
         validate_field(paymentspring.validateName(ccf["cardholder_name"].val()), ccf["cardholder_name"], "Please enter a valid cardholder name."));
 }
 
-if (!jQuery("#gform_{$form_id} #input_{$form_id}_{$cc_field_id}_1").is(":hidden")) {
+//if (!jQuery("#gform_{$form_id} #input_{$form_id}_{$cc_field_id}_1").is(":hidden")) {
+if (jQuery("#input_{$form_id}_{$cc_field_id}_1").length > 0) {
     // Card field is on this page.
     jQuery("#gform_{$form_id}").submit(function () {
         var target = jQuery("#gform_target_page_number_{$form_id}").val();
